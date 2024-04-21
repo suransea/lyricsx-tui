@@ -36,13 +36,13 @@ $ lyricsx-cli play [--color <color>] [--no-bold]
 
 #### Keyboard actions
 
-| KEY       | ACTION          |
-|-----------|-----------------|
-| `[Q]`     | *Q*uit          |
-| `[R]`     | *R*eload lyrics |
-| `[space]` | Play or pause   |
-| `[,]`     | Previous track  |
-| `[.]`     | Next track      |
+| KEY             | ACTION               |
+|-----------------|----------------------|
+| `[Q]`           | *Q*uit               |
+| `[R]`           | *R*eload lyrics      |
+| `[up]`/`[down]` | previous/next lyrics |
+| `[space]`       | play/pause           |
+| `[,]`/`[.]`     | previous/next track  |
 
 
 #### Snapshots

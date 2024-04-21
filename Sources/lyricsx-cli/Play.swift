@@ -54,10 +54,10 @@ func updateTopBar(title: String, artist: String?, album: String?) {
     printAt(x: SPACE, y: 0, text: bar, foreground: .black, background: .white)
 }
 
-func updateBottomBar(state: PlaybackState, lyric: Lyrics?) {
+func updateBottomBar(state: PlaybackState, lyric: Lyrics?, index: Int, count: Int) {
     let source: String
     if let lyric = lyric {
-        source = lyric.metadata.service?.rawValue ?? UNKNOWN
+        source = "\(lyric.metadata.service?.rawValue ?? UNKNOWN) (\(index + 1)/\(count))"
     } else {
         source = NO_CONTENT
     }
@@ -115,13 +115,15 @@ func play(foreground: Attributes) {
     }
 
     var cancelBag = [AnyCancellable]()
-    let currentLyrics = CurrentValueSubject<Lyrics?, Never>(nil)
+    let playingLyrics = CurrentValueSubject<Lyrics?, Never>(nil)
     var currentIndex = -1
+    var fetchedLyrics: [Lyrics] = []
+    var lyricsIndex = -1
 
-    currentLyrics
+    playingLyrics
         .combineLatest(player.playbackStateWillChange.prepend(.stopped))
         .map { lyrics, state in
-            updateBottomBar(state: state, lyric: lyrics)
+            updateBottomBar(state: state, lyric: lyrics, index: lyricsIndex, count: fetchedLyrics.count)
             if let lyrics = lyrics {
                 currentIndex = index(of: state.time, of: lyrics.lines) - 1
                 updateLyricArea(lines: lyrics.lines, index: currentIndex, foreground: foreground)
@@ -132,6 +134,7 @@ func play(foreground: Attributes) {
                 }
             } else {
                 currentIndex = -1
+                clearLyricArea()
             }
             Termbox.present()
             return Empty().eraseToAnyPublisher()
@@ -140,7 +143,7 @@ func play(foreground: Attributes) {
         .receive(on: DispatchQueue.main.cx)
         .sink { index in
             currentIndex = index
-            guard let lyrics = currentLyrics.value else { return }
+            guard let lyrics = playingLyrics.value else { return }
             updateLyricArea(lines: lyrics.lines, index: index, foreground: foreground)
             Termbox.present()
         }
@@ -149,40 +152,47 @@ func play(foreground: Attributes) {
     player.currentTrackWillChange
         .prepend(nil)
         .handleEvents(receiveOutput: { track in
+            fetchedLyrics = []
+            playingLyrics.send(nil)
             updateTopBar(track: track)
-            clearLyricArea()
-            updateBottomBar(state: player.playbackState, lyric: nil)
             Termbox.present()
         })
         .flatMap { track in
             track.map {
-                lyrics(of: $0).map(Optional.some).prepend(nil).eraseToAnyPublisher()
+                lyrics(of: $0)
+                    .handleEvents(receiveOutput: { lyrics in
+                        fetchedLyrics = lyrics
+                        lyricsIndex = 0
+                    })
+                    .map(\.first)
+                    .eraseToAnyPublisher()
             } ?? Just(nil).eraseToAnyPublisher()
         }
-        .sink { currentLyrics.send($0) }
+        .sink { playingLyrics.send($0) }
         .store(in: &cancelBag)
 
     let reloadLyrics = {
         guard let track = player.currentTrack else { return }
-        updateBottomBar(state: player.playbackState, source: "Loading...")
+        updateBottomBar(state: player.playbackState, source: "Reloading...")
         Termbox.present()
         lyrics(of: track)
-            .handleEvents(receiveCompletion: { _ in
-                updateBottomBar(state: player.playbackState, lyric: currentLyrics.value)
-                Termbox.present()
+            .handleEvents(receiveOutput: { lyrics in
+                fetchedLyrics = lyrics
+                lyricsIndex = 0
             })
-            .sink { currentLyrics.send($0) }
+            .map(\.first)
+            .sink { playingLyrics.send($0) }
             .store(in: &cancelBag)
     }
 
     let forceUpdate = {
         updateTopBar(track: player.currentTrack)
-        if let lyrics = currentLyrics.value {
+        if let lyrics = playingLyrics.value {
             updateLyricArea(lines: lyrics.lines, index: currentIndex, foreground: foreground)
         } else {
             clearLyricArea()
         }
-        updateBottomBar(state: player.playbackState, lyric: currentLyrics.value)
+        updateBottomBar(state: player.playbackState, lyric: playingLyrics.value, index: lyricsIndex, count: fetchedLyrics.count)
         Termbox.present()
     }
 
@@ -203,6 +213,24 @@ func play(foreground: Attributes) {
                 break
             case .key(modifier: .none, value: .space):
                 player.playPause()
+                break
+            case .key(modifier: .none, value: .arrowUp):
+                if !fetchedLyrics.isEmpty {
+                    lyricsIndex -= 1
+                    if lyricsIndex < 0 {
+                        lyricsIndex = fetchedLyrics.count - 1
+                    }
+                    playingLyrics.send(fetchedLyrics[lyricsIndex])
+                }
+                break
+            case .key(modifier: .none, value: .arrowDown):
+                if !fetchedLyrics.isEmpty {
+                    lyricsIndex += 1
+                    if lyricsIndex >= fetchedLyrics.count {
+                        lyricsIndex = 0
+                    }
+                    playingLyrics.send(fetchedLyrics[lyricsIndex])
+                }
                 break
             case .character(modifier: .none, value: ","):
                 player.skipToPreviousItem()
