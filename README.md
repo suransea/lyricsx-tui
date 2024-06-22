@@ -1,6 +1,6 @@
-# lyricsx-cli
+# lyricsx-tui
 
-[![GitHub CI](https://github.com/ddddxxx/lyricsx-cli/workflows/CI/badge.svg)](https://github.com/ddddxxx/lyricsx-cli/actions)
+[![GitHub CI](https://github.com/suransea/lyricsx-tui/workflows/CI/badge.svg)](https://github.com/suransea/lyricsx-tui/actions)
 
 [LyricsX](https://github.com/ddddxxx/LyricsX) cross platform command line interface.
 
@@ -16,22 +16,8 @@ No additional dependencies required.
 
 ## Usage
 
-### Search
-
 ```
-$ lyricsx-cli search <keyword>
-```
-
-### Tick
-
-```
-$ lyricsx-cli tick
-```
-
-### Play
-
-```
-$ lyricsx-cli play [--color <color>] [--no-bold]
+$ lyricsx-tui [--color <color>] [--no-bold] [--fix-delay <seconds>]
 ```
 
 #### Keyboard actions
@@ -45,6 +31,6 @@ $ lyricsx-cli play [--color <color>] [--no-bold]
 | `[,]`/`[.]`     | previous/next track  |
 
 
-#### Snapshots
+## Screenshots
 
-![play.png](.assets/play.png)
+![screenshot.png](.assets/screenshot.png)

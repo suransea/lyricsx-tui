@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "lyricsx-cli",
+    name: "lyricsx-tui",
     platforms: [.macOS(.v12)],
     dependencies: [
         .package(
@@ -14,7 +14,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "lyricsx-cli",
+            name: "lyricsx-tui",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 "LyricsKit",
@@ -22,7 +22,7 @@ let package = Package(
                 "Termbox",
             ]),
         .testTarget(
-            name: "lyricsx-cli-tests",
-            dependencies: ["lyricsx-cli"]),
+            name: "lyricsx-tui-tests",
+            dependencies: ["lyricsx-tui"]),
     ]
 )

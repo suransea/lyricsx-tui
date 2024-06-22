@@ -1,13 +1,9 @@
-import CXShim
+import Combine
+import Dispatch
 import Foundation
 import LyricsService
 import MusicPlayer
-
-#if os(macOS)
-  typealias CurrentPlayer = MusicPlayers.SystemMedia
-#elseif os(Linux)
-  typealias CurrentPlayer = MusicPlayers.MPRISNowPlaying
-#endif
+import Termbox
 
 func lyrics(of track: MusicTrack) -> some Publisher<[Lyrics], Never> {
   LyricsProviders.Group()

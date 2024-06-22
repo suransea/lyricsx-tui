@@ -1,112 +1,53 @@
-import CXShim
-import Dispatch
+import ArgumentParser
+import Combine
 import Foundation
-import LyricsService
+import LyricsCore
 import MusicPlayer
 import Termbox
 
-private let NO_CONTENT = "-"
-private let UNKNOWN = "Unknown"
-private let SPACE: Int32 = 2
+@main
+struct App: ParsableCommand {
+  static var configuration = CommandConfiguration(
+    commandName: "lyricsx-tui",
+    abstract: "LyricsX in terminal UI.")
 
-func printAt(
-  x: Int32, y: Int32, text: String, foreground: Attributes = .default,
-  background: Attributes = .default
-) {
-  for (c, xi) in zip(text.unicodeScalars, x..<Termbox.width) {
-    Termbox.put(x: xi, y: y, character: c, foreground: foreground, background: background)
+  @Option(name: .shortAndLong, help: "The hightcolor for the current line.")
+  var color: Attributes = .cyan
+
+  @Flag(help: "Disable font bold.")
+  var noBold: Bool = false
+
+  @Option(help: "Delay fix in seconds.")
+  var fixDelay: TimeInterval = 0
+
+  func run() {
+    runApp(foreground: noBold ? color : [color, .bold], fixDelay: fixDelay)
   }
 }
 
-func clearTopBar() {
-  for i in 0..<Termbox.width {
-    Termbox.put(x: i, y: 0, character: " ", background: .white)
+extension Attributes: ExpressibleByArgument {
+  private static let attrs: [String: Attributes] = [
+    "black": .black, "white": .white, "red": .red, "green": .green, "yellow": .yellow,
+    "blue": .blue, "magenta": .magenta, "cyan": .cyan,
+  ]
+
+  public init?(argument: String) {
+    guard let attr = Self.attrs[argument] else { return nil }
+    self = attr
   }
+
+  public var defaultValueDescription: String { "cyan" }
+
+  public static var allValueStrings: [String] { Array(attrs.keys) }
 }
 
-func clearBottomBar() {
-  for i in 0..<Termbox.width {
-    Termbox.put(x: i, y: Termbox.height - 1, character: " ", background: .white)
-  }
-}
+#if os(macOS)
+  typealias CurrentPlayer = MusicPlayers.SystemMedia
+#elseif os(Linux)
+  typealias CurrentPlayer = MusicPlayers.MPRISNowPlaying
+#endif
 
-func clearLyricArea() {
-  for i in 0..<Termbox.width {
-    for j in 1..<Termbox.height - 1 {
-      Termbox.put(x: i, y: j, character: " ")
-    }
-  }
-}
-
-func updateTopBar(track: MusicTrack?) {
-  if let track = track {
-    updateTopBar(title: track.title ?? UNKNOWN, artist: track.artist, album: track.album)
-  } else {
-    updateTopBar(title: NO_CONTENT, artist: NO_CONTENT, album: NO_CONTENT)
-  }
-}
-
-func updateTopBar(title: String, artist: String?, album: String?) {
-  clearTopBar()
-  var bar = "Title: \(title)"
-  if let artist = artist { bar += " | Artist: \(artist)" }
-  if let album = album { bar += " | Album: \(album)" }
-  printAt(x: SPACE, y: 0, text: bar, foreground: .black, background: .white)
-}
-
-func updateBottomBar(state: PlaybackState, lyric: Lyrics?, index: Int, count: Int) {
-  let source: String
-  if let lyric = lyric {
-    source = "\(lyric.metadata.service?.rawValue ?? UNKNOWN) (\(index + 1)/\(count))"
-  } else {
-    source = NO_CONTENT
-  }
-  updateBottomBar(state: state, source: source)
-}
-
-func updateBottomBar(state: PlaybackState, source: String) {
-  clearBottomBar()
-  let status: String = {
-    switch state {
-    case .playing: return "Playing"
-    case .paused: return "Paused"
-    case .stopped: return "Stopped"
-    default: return "Stopped"
-    }
-  }()
-  let bar = "State: \(status) | Lyric Source: \(source)"
-  printAt(x: SPACE, y: Termbox.height - 1, text: bar, foreground: .black, background: .white)
-}
-
-func updateLyricArea(lines: [LyricsLine], index: Int, foreground: Attributes) {
-  clearLyricArea()
-  let middle = Termbox.height / 2
-  if lines.indices.contains(index) {
-    printAt(x: SPACE, y: middle, text: lines[index].content, foreground: foreground)
-  }
-  for (line, pos) in zip(lines.prefix(max(index, 0)).reversed(), (SPACE..<middle).reversed()) {
-    printAt(x: SPACE, y: pos, text: line.content)
-  }
-  for (line, pos) in zip(lines.dropFirst(index + 1), middle + 1..<Termbox.height - SPACE) {
-    printAt(x: SPACE, y: pos, text: line.content)
-  }
-}
-
-func terminalEvents(on queue: DispatchQueue) -> some Publisher<Event, Never> {
-  let publisher = PassthroughSubject<Event, Never>()
-  var active = true
-  func publish() {
-    if let event = Termbox.pollEvent(), active {
-      publisher.send(event)
-    }
-    if active { queue.async { publish() } }
-  }
-  return publisher.handleEvents(
-    receiveSubscription: { _ in queue.async { publish() } },
-    receiveCancel: { active = false })
-}
-
-func play(foreground: Attributes, fixDelay: TimeInterval = 0) {
+private func runApp(foreground: Attributes, fixDelay: TimeInterval = 0) {
   guard let player = CurrentPlayer() else {
     fatalError("Unable to connect to the music player.")
   }
@@ -143,7 +84,7 @@ func play(foreground: Attributes, fixDelay: TimeInterval = 0) {
       return Empty().eraseToAnyPublisher()
     }
     .switchToLatest()
-    .receive(on: DispatchQueue.main.cx)
+    .receive(on: DispatchQueue.main)
     .sink { index in
       currentIndex = index
       guard let lyrics = playingLyrics.value else { return }
@@ -202,7 +143,7 @@ func play(foreground: Attributes, fixDelay: TimeInterval = 0) {
   }
 
   terminalEvents(on: DispatchQueue(label: "TerminalEvents"))
-    .receive(on: DispatchQueue.main.cx)
+    .receive(on: DispatchQueue.main)
     .sink { event in
       switch event {
       case .character(modifier: .none, value: "q"):
