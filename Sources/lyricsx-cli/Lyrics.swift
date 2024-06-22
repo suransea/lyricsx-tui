@@ -1,50 +1,53 @@
-import Foundation
 import CXShim
+import Foundation
 import LyricsService
 import MusicPlayer
 
 #if os(macOS)
-    typealias CurrentPlayer = MusicPlayers.SystemMedia
+  typealias CurrentPlayer = MusicPlayers.SystemMedia
 #elseif os(Linux)
-    typealias CurrentPlayer = MusicPlayers.MPRISNowPlaying
+  typealias CurrentPlayer = MusicPlayers.MPRISNowPlaying
 #endif
 
 func lyrics(of track: MusicTrack) -> some Publisher<[Lyrics], Never> {
-    LyricsProviders.Group()
-        .lyricsPublisher(
-            request: LyricsSearchRequest(
-                searchTerm: .info(title: track.title ?? "", artist: track.artist ?? ""),
-                duration: track.duration ?? 0)
-        )
-        .collect()
-        .map { $0.sorted { $0.quality > $1.quality } }
-        .ignoreError()
+  LyricsProviders.Group()
+    .lyricsPublisher(
+      request: LyricsSearchRequest(
+        searchTerm: .info(title: track.title ?? "", artist: track.artist ?? ""),
+        duration: track.duration ?? 0)
+    )
+    .collect()
+    .map { $0.sorted { $0.quality > $1.quality } }
+    .ignoreError()
 }
 
 func index(of offset: TimeInterval, of lines: [LyricsLine]) -> Int {
-    lines.firstIndex { $0.position > offset } ?? lines.count
+  lines.firstIndex { $0.position > offset } ?? lines.count
 }
 
 func timedIndices(
-    of lines: [LyricsLine], on queue: DispatchQueue,
-    with player: MusicPlayerProtocol
+  of lines: [LyricsLine], on queue: DispatchQueue,
+  with player: MusicPlayerProtocol,
+  fixDelay: TimeInterval = 0
 ) -> some Publisher<Array<LyricsLine>.Index, Never> {
-    let publisher = PassthroughSubject<Int, Never>()
-    var canceled = false
-    func publish(next index: Int) {
-        if canceled { return }
-        if index >= lines.count {
-            publisher.send(completion: .finished)
-            return
-        }
-        queue.asyncAfter(deadline: .now() + (lines[index].position - player.playbackTime)) {
-            if canceled { return }
-            publisher.send(index)
-            publish(next: index + 1)
-        }
+  let publisher = PassthroughSubject<Int, Never>()
+  var canceled = false
+  func publish(next index: Int) {
+    if canceled { return }
+    if index >= lines.count {
+      publisher.send(completion: .finished)
+      return
     }
-    return publisher.handleEvents(
-        receiveSubscription: { _ in
-            queue.async { publish(next: index(of: player.playbackTime, of: lines)) }
-        }, receiveCancel: { canceled = true })
+    queue.asyncAfter(
+      deadline: .now() + (lines[index].position - (player.playbackTime - fixDelay))
+    ) {
+      if canceled { return }
+      publisher.send(index)
+      publish(next: index + 1)
+    }
+  }
+  return publisher.handleEvents(
+    receiveSubscription: { _ in
+      queue.async { publish(next: index(of: player.playbackTime - fixDelay, of: lines)) }
+    }, receiveCancel: { canceled = true })
 }
