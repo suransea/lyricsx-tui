@@ -2,7 +2,7 @@
 
 [![GitHub CI](https://github.com/suransea/lyricsx-tui/workflows/CI/badge.svg)](https://github.com/suransea/lyricsx-tui/actions)
 
-[LyricsX](https://github.com/ddddxxx/LyricsX) cross platform command line interface.
+[LyricsX](https://github.com/ddddxxx/LyricsX) in terminal UI.
 
 ## Dependences
 
