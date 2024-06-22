@@ -1,7 +1,6 @@
 import ArgumentParser
 import Combine
 import Foundation
-import LyricsCore
 import MusicPlayer
 import Termbox
 
@@ -56,127 +55,25 @@ private func runApp(foreground: Attributes, fixDelay: TimeInterval = 0) {
   }
 
   var cancelBag = [AnyCancellable]()
-  let playingLyrics = CurrentValueSubject<Lyrics?, Never>(nil)
-  var currentIndex = -1
-  var fetchedLyrics: [Lyrics] = []
-  var lyricsIndex = -1
+  let terminalEvents = terminalEvents().share()
 
-  playingLyrics
-    .combineLatest(player.playbackStateWillChange.prepend(.stopped))
-    .map { lyrics, state in
-      updateBottomBar(
-        state: state, lyric: lyrics, index: lyricsIndex, count: fetchedLyrics.count)
-      if let lyrics = lyrics {
-        currentIndex = index(of: state.time, of: lyrics.lines) - 1
-        updateLyricArea(lines: lyrics.lines, index: currentIndex, foreground: foreground)
-        if state.isPlaying {
-          Termbox.present()
-          return timedIndices(
-            of: lyrics.lines, on: .main, with: player, fixDelay: fixDelay
-          )
-          .eraseToAnyPublisher()
-        }
-      } else {
-        currentIndex = -1
-        clearLyricArea()
-      }
-      Termbox.present()
-      return Empty().eraseToAnyPublisher()
-    }
-    .switchToLatest()
-    .receive(on: DispatchQueue.main)
-    .sink { index in
-      currentIndex = index
-      guard let lyrics = playingLyrics.value else { return }
-      updateLyricArea(lines: lyrics.lines, index: index, foreground: foreground)
-      Termbox.present()
-    }
-    .store(in: &cancelBag)
+  let cancelPlay = playLyrics(
+    for: player, on: .main,
+    foreground: foreground, fixDelay: fixDelay,
+    terminalEvents: terminalEvents)
 
-  player.currentTrackWillChange
-    .prepend(nil)
-    .handleEvents(receiveOutput: { track in
-      fetchedLyrics = []
-      playingLyrics.send(nil)
-      updateTopBar(track: track)
-      Termbox.present()
-    })
-    .flatMap { track in
-      track.map {
-        lyrics(of: $0)
-          .handleEvents(receiveOutput: { lyrics in
-            fetchedLyrics = lyrics
-            lyricsIndex = 0
-          })
-          .map(\.first)
-          .eraseToAnyPublisher()
-      } ?? Just(nil).eraseToAnyPublisher()
-    }
-    .sink { playingLyrics.send($0) }
-    .store(in: &cancelBag)
-
-  let reloadLyrics = {
-    guard let track = player.currentTrack else { return }
-    updateBottomBar(state: player.playbackState, source: "Reloading...")
-    Termbox.present()
-    lyrics(of: track)
-      .handleEvents(receiveOutput: { lyrics in
-        fetchedLyrics = lyrics
-        lyricsIndex = 0
-      })
-      .map(\.first)
-      .sink { playingLyrics.send($0) }
-      .store(in: &cancelBag)
-  }
-
-  let forceUpdate = {
-    updateTopBar(track: player.currentTrack)
-    if let lyrics = playingLyrics.value {
-      updateLyricArea(lines: lyrics.lines, index: currentIndex, foreground: foreground)
-    } else {
-      clearLyricArea()
-    }
-    updateBottomBar(
-      state: player.playbackState, lyric: playingLyrics.value, index: lyricsIndex,
-      count: fetchedLyrics.count)
-    Termbox.present()
-  }
-
-  terminalEvents(on: DispatchQueue(label: "TerminalEvents"))
+  terminalEvents
     .receive(on: DispatchQueue.main)
     .sink { event in
       switch event {
       case .character(modifier: .none, value: "q"):
         cancelBag = []
+        cancelPlay()
         Termbox.shutdown()
         exit(0)
         break
-      case .character(modifier: .none, value: "r"):
-        reloadLyrics()
-        break
-      case .resize(width: _, height: _):
-        forceUpdate()
-        break
       case .key(modifier: .none, value: .space):
         player.playPause()
-        break
-      case .key(modifier: .none, value: .arrowUp):
-        if !fetchedLyrics.isEmpty {
-          lyricsIndex -= 1
-          if lyricsIndex < 0 {
-            lyricsIndex = fetchedLyrics.count - 1
-          }
-          playingLyrics.send(fetchedLyrics[lyricsIndex])
-        }
-        break
-      case .key(modifier: .none, value: .arrowDown):
-        if !fetchedLyrics.isEmpty {
-          lyricsIndex += 1
-          if lyricsIndex >= fetchedLyrics.count {
-            lyricsIndex = 0
-          }
-          playingLyrics.send(fetchedLyrics[lyricsIndex])
-        }
         break
       case .character(modifier: .none, value: ","):
         player.skipToPreviousItem()

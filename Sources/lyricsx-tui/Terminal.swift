@@ -3,7 +3,9 @@ import Dispatch
 import Foundation
 import Termbox
 
-func terminalEvents(on queue: DispatchQueue) -> some Publisher<Event, Never> {
+func terminalEvents(
+  on queue: DispatchQueue = DispatchQueue(label: "TerminalEvents")
+) -> some Publisher<Event, Never> {
   let publisher = PassthroughSubject<Event, Never>()
   var active = true
   func publish() {
