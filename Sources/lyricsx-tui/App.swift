@@ -1,8 +1,13 @@
 import ArgumentParser
-import Combine
 import Foundation
 import MusicPlayer
 import Termbox
+
+#if os(macOS)
+  typealias CurrentPlayer = MusicPlayers.SystemMedia
+#elseif os(Linux)
+  typealias CurrentPlayer = MusicPlayers.MPRISNowPlaying
+#endif
 
 @main
 struct App: ParsableCommand {
@@ -20,7 +25,10 @@ struct App: ParsableCommand {
   var fixDelay: TimeInterval = 0
 
   func run() {
-    runApp(foreground: noBold ? color : [color, .bold], fixDelay: fixDelay)
+    guard let player = CurrentPlayer() else {
+      fatalError("Unable to connect to the music player.")
+    }
+    playLyrics(for: player, highlightStyle: noBold ? color : [color, .bold], fixDelay: fixDelay)
   }
 }
 
@@ -38,62 +46,4 @@ extension Attributes: ExpressibleByArgument {
   public var defaultValueDescription: String { "cyan" }
 
   public static var allValueStrings: [String] { Array(attrs.keys) }
-}
-
-#if os(macOS)
-  typealias CurrentPlayer = MusicPlayers.SystemMedia
-#elseif os(Linux)
-  typealias CurrentPlayer = MusicPlayers.MPRISNowPlaying
-#endif
-
-private func runApp(foreground: Attributes, fixDelay: TimeInterval = 0) {
-  guard let player = CurrentPlayer() else {
-    fatalError("Unable to connect to the music player.")
-  }
-  do { try Termbox.initialize() } catch {
-    fatalError("\(error)")
-  }
-
-  var cancelBag = [AnyCancellable]()
-  let terminalEvents = terminalEvents().share()
-
-  let cancelPlay = playLyrics(
-    for: player, on: .main,
-    foreground: foreground, fixDelay: fixDelay,
-    terminalEvents: terminalEvents)
-
-  terminalEvents
-    .receive(on: DispatchQueue.main)
-    .sink { event in
-      switch event {
-      case .character(modifier: .none, value: "q"):
-        cancelBag = []
-        cancelPlay()
-        Termbox.shutdown()
-        exit(0)
-        break
-      case .key(modifier: .none, value: .space):
-        player.playPause()
-        break
-      case .character(modifier: .none, value: ","):
-        player.skipToPreviousItem()
-        break
-      case .character(modifier: .none, value: "."):
-        player.skipToNextItem()
-        break
-      default:
-        break
-      }
-    }
-    .store(in: &cancelBag)
-
-  #if os(Linux)
-    Thread.detachNewThread {
-      Thread.current.name = "GMainLoop"
-      GRunLoop.main.run()
-    }
-  #endif
-  RunLoop.main.run()
-
-  Termbox.shutdown()
 }

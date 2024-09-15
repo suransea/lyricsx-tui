@@ -5,6 +5,22 @@ import LyricsService
 import MusicPlayer
 import Termbox
 
+private func terminalEvents(
+  on queue: DispatchQueue = DispatchQueue(label: "TerminalEvents")
+) -> some Publisher<Event, Never> {
+  let publisher = PassthroughSubject<Event, Never>()
+  var active = true
+  func publish() {
+    if let event = Termbox.pollEvent(), active {
+      publisher.send(event)
+    }
+    if active { queue.async { publish() } }
+  }
+  return publisher.handleEvents(
+    receiveSubscription: { _ in queue.async { publish() } },
+    receiveCancel: { active = false })
+}
+
 private func lyrics(of track: MusicTrack) -> some Publisher<[Lyrics], Never> {
   LyricsProviders.Group()
     .lyricsPublisher(
@@ -23,7 +39,7 @@ private func index(of offset: TimeInterval, of lines: [LyricsLine]) -> Int {
 
 private func timedIndices(
   of lines: [LyricsLine], on queue: DispatchQueue,
-  with player: MusicPlayerProtocol,
+  for player: MusicPlayerProtocol,
   fixDelay: TimeInterval = 0
 ) -> some Publisher<Array<LyricsLine>.Index, Never> {
   let publisher = PassthroughSubject<Int, Never>()
@@ -44,130 +60,105 @@ private func timedIndices(
   }
   return publisher.handleEvents(
     receiveSubscription: { _ in
-      queue.async { publish(next: index(of: player.playbackTime - fixDelay, of: lines)) }
+      queue.async {
+        let nextIndex = index(of: player.playbackTime - fixDelay, of: lines)
+        publisher.send(nextIndex - 1)
+        publish(next: nextIndex)
+      }
     }, receiveCancel: { canceled = true })
 }
 
 func playLyrics(
-  for player: MusicPlayerProtocol,
-  on queue: DispatchQueue,
-  foreground: Attributes, fixDelay: TimeInterval = 0,
-  terminalEvents: some Publisher<Event, Never>
-) -> () -> Void {
-  var cancelBag = [AnyCancellable]()
-  let playingLyrics = CurrentValueSubject<Lyrics?, Never>(nil)
-  var currentIndex = -1
-  var fetchedLyrics: [Lyrics] = []
-  var lyricsIndex = -1
+  for player: some MusicPlayerProtocol,
+  highlightStyle: Attributes,
+  fixDelay: TimeInterval = 0
+) {
+  do { try Termbox.initialize() } catch {
+    fatalError("\(error)")
+  }
+  defer { Termbox.shutdown() }
 
-  playingLyrics
-    .combineLatest(player.playbackStateWillChange.prepend(.stopped))
-    .map { lyrics, state in
-      updateBottomBar(
-        state: state, lyric: lyrics, index: lyricsIndex, count: fetchedLyrics.count)
-      if let lyrics = lyrics {
-        currentIndex = index(of: state.time, of: lyrics.lines) - 1
-        updateLyricArea(lines: lyrics.lines, index: currentIndex, foreground: foreground)
-        if state.isPlaying {
-          Termbox.present()
-          return timedIndices(
-            of: lyrics.lines, on: queue, with: player, fixDelay: fixDelay
-          )
+  var cancelBag = [AnyCancellable]()
+  let playingLyrics = CurrentValueSubject<([Lyrics], [Lyrics].Index), Never>(([], 0))
+
+  let state = LyricsPanelState()
+  state.highlightStyle = highlightStyle
+  Task { await renderLyricsPanel(for: state) }
+
+  playingLyrics.combineLatest(player.playbackStateWillChange.prepend(player.playbackState))
+    .map { lyrics, playbackState in
+      let (avaliableLyrics, lyricsIndex) = lyrics
+      state.avaliableLyrics = avaliableLyrics
+      state.lyricsIndex = lyricsIndex
+      state.playbackState = playbackState
+      if playbackState.isPlaying {
+        return timedIndices(of: state.lyricsLines, on: .main, for: player, fixDelay: fixDelay)
           .eraseToAnyPublisher()
-        }
-      } else {
-        currentIndex = -1
-        clearLyricArea()
       }
-      Termbox.present()
-      return Empty().eraseToAnyPublisher()
+      return Just(index(of: player.playbackTime - fixDelay, of: state.lyricsLines) - 1)
+        .eraseToAnyPublisher()
     }
     .switchToLatest()
-    .receive(on: queue)
-    .sink { index in
-      currentIndex = index
-      guard let lyrics = playingLyrics.value else { return }
-      updateLyricArea(lines: lyrics.lines, index: index, foreground: foreground)
-      Termbox.present()
+    .sink { hightlightIndex in
+      state.hightlightIndex = hightlightIndex
     }
     .store(in: &cancelBag)
 
-  player.currentTrackWillChange
-    .prepend(nil)
+  player.currentTrackWillChange.prepend(player.currentTrack)
     .handleEvents(receiveOutput: { track in
-      fetchedLyrics = []
-      playingLyrics.send(nil)
-      updateTopBar(track: track)
-      Termbox.present()
+      state.track = track
+      playingLyrics.send(([], 0))
     })
     .flatMap { track in
-      track.map {
-        lyrics(of: $0)
-          .handleEvents(receiveOutput: { lyrics in
-            fetchedLyrics = lyrics
-            lyricsIndex = 0
-          })
-          .map(\.first)
-          .eraseToAnyPublisher()
-      } ?? Just(nil).eraseToAnyPublisher()
+      track.map { lyrics(of: $0).eraseToAnyPublisher() } ?? Just([]).eraseToAnyPublisher()
     }
-    .sink { playingLyrics.send($0) }
+    .sink { lyrics in
+      playingLyrics.send((lyrics, 0))
+    }
     .store(in: &cancelBag)
 
   let reloadLyrics = {
     guard let track = player.currentTrack else { return }
-    updateBottomBar(state: player.playbackState, source: "Reloading...")
-    Termbox.present()
     lyrics(of: track)
-      .handleEvents(receiveOutput: { lyrics in
-        fetchedLyrics = lyrics
-        lyricsIndex = 0
-      })
-      .map(\.first)
-      .sink { playingLyrics.send($0) }
+      .sink { lyrics in
+        playingLyrics.send((lyrics, 0))
+      }
       .store(in: &cancelBag)
   }
 
-  let forceUpdate = {
-    updateTopBar(track: player.currentTrack)
-    if let lyrics = playingLyrics.value {
-      updateLyricArea(lines: lyrics.lines, index: currentIndex, foreground: foreground)
-    } else {
-      clearLyricArea()
-    }
-    updateBottomBar(
-      state: player.playbackState, lyric: playingLyrics.value, index: lyricsIndex,
-      count: fetchedLyrics.count)
-    Termbox.present()
-  }
-
-  let changeLyrics = { (index: Int) in
-    if fetchedLyrics.isEmpty { return }
-    lyricsIndex = index
-    if lyricsIndex < 0 {
-      lyricsIndex = fetchedLyrics.count - 1
-    }
-    if lyricsIndex >= fetchedLyrics.count {
-      lyricsIndex = 0
-    }
-    playingLyrics.send(fetchedLyrics[lyricsIndex])
-  }
-
-  terminalEvents
-    .receive(on: queue)
+  terminalEvents()
     .sink { event in
       switch event {
       case .character(modifier: .none, value: "r"):
         reloadLyrics()
         break
-      case .resize(width: _, height: _):
-        forceUpdate()
+      case .resize(let width, let height):
+        state.width = width
+        state.height = height
         break
       case .key(modifier: .none, value: .arrowUp):
-        changeLyrics(lyricsIndex - 1)
+        let previousIndex =
+          state.lyricsIndex == 0 ? state.avaliableLyrics.count - 1 : state.lyricsIndex - 1
+        playingLyrics.send((state.avaliableLyrics, previousIndex))
         break
       case .key(modifier: .none, value: .arrowDown):
-        changeLyrics(lyricsIndex + 1)
+        let nextIndex =
+          state.lyricsIndex == state.avaliableLyrics.count - 1 ? 0 : state.lyricsIndex + 1
+        playingLyrics.send((state.avaliableLyrics, nextIndex))
+        break
+      case .character(modifier: .none, value: "q"):
+        cancelBag = []
+        Termbox.shutdown()
+        exit(0)
+        break
+      case .key(modifier: .none, value: .space):
+        player.playPause()
+        break
+      case .character(modifier: .none, value: ","):
+        player.skipToPreviousItem()
+        break
+      case .character(modifier: .none, value: "."):
+        player.skipToNextItem()
         break
       default:
         break
@@ -175,5 +166,11 @@ func playLyrics(
     }
     .store(in: &cancelBag)
 
-  return { cancelBag = [] }
+  #if os(Linux)
+    Thread.detachNewThread {
+      Thread.current.name = "GMainLoop"
+      GRunLoop.main.run()
+    }
+  #endif
+  RunLoop.main.run()
 }
