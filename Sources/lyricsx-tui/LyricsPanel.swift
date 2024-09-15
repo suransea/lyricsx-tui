@@ -12,7 +12,7 @@ class LyricsPanelState {
   var track: MusicTrack?
   var avaliableLyrics: [Lyrics] = []
   var lyricsIndex: Int = 0
-  var hightlightIndex: Int = 0
+  var highlightIndex: Int = 0
   var highlightStyle: Attributes = [.cyan, .bold]
 
   var title: String {
@@ -63,7 +63,7 @@ class LyricsPanelState {
 
 @MainActor
 func renderLyricsPanel(for state: LyricsPanelState) {
-  observeLooping {
+  observing {
     clearTopBar()
     renderAt(
       x: state.padding, y: 0, text: state.topBarContent, foreground: .black, background: .white)
@@ -73,24 +73,24 @@ func renderLyricsPanel(for state: LyricsPanelState) {
     _ = state.padding
     _ = state.width
   }
-  observeLooping {
+  observing {
     clearBottomBar()
     renderAt(
-      x: state.padding, y: Termbox.height - 1, text: state.bottomBarContent, foreground: .black,
-      background: .white)
+      x: state.padding, y: Termbox.height - 1, text: state.bottomBarContent,
+      foreground: .black, background: .white)
     Termbox.present()
   } tracking: {
     _ = state.bottomBarContent
     _ = state.padding
     _ = (state.height, state.width)
   }
-  observeLooping {
+  observing {
     clearLyricsArea()
     renderLyricsArea(for: state)
     Termbox.present()
   } tracking: {
     _ = state.lyricsLines
-    _ = state.hightlightIndex
+    _ = state.highlightIndex
     _ = state.highlightStyle
     _ = state.padding
     _ = (state.height, state.width)
@@ -98,17 +98,18 @@ func renderLyricsPanel(for state: LyricsPanelState) {
 }
 
 @MainActor
-private func observeLooping(_ block: @escaping () -> Void, tracking: @escaping () -> Void) {
+private func observing(_ block: @escaping () -> Void, tracking: @escaping () -> Void) {
+  block()
   withObservationTracking {
     tracking()
   } onChange: {
-    Task { await observeLooping(block, tracking: tracking) }
+    Task { await observing(block, tracking: tracking) }
   }
-  block()
 }
 
 private func renderAt(
-  x: Int32, y: Int32, text: String, foreground: Attributes = .default,
+  x: Int32, y: Int32, text: String,
+  foreground: Attributes = .default,
   background: Attributes = .default
 ) {
   for (c, xi) in zip(text.unicodeScalars, x..<Termbox.width) {
@@ -139,9 +140,9 @@ private func clearLyricsArea() {
 private func renderLyricsArea(for state: LyricsPanelState) {
   let middle = Termbox.height / 2
   let lines = state.lyricsLines
-  let index = state.hightlightIndex
+  let index = state.highlightIndex
   let padding = state.padding
-  if lines.indices.contains(state.hightlightIndex) {
+  if lines.indices.contains(state.highlightIndex) {
     renderAt(x: padding, y: middle, text: lines[index].content, foreground: state.highlightStyle)
   }
   for (line, pos) in zip(lines.prefix(max(index, 0)).reversed(), (padding..<middle).reversed()) {

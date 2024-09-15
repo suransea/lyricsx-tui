@@ -99,8 +99,8 @@ func playLyrics(
         .eraseToAnyPublisher()
     }
     .switchToLatest()
-    .sink { hightlightIndex in
-      state.hightlightIndex = hightlightIndex
+    .sink { highlightIndex in
+      state.highlightIndex = highlightIndex
     }
     .store(in: &cancelBag)
 
