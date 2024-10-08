@@ -4,32 +4,21 @@
 
 [LyricsX](https://github.com/ddddxxx/LyricsX) in terminal UI.
 
-## Dependences
-
-### macOS
-
-No additional dependencies required.
-
-### Linux
-
-- [playerctl](https://github.com/altdesktop/playerctl)
-
 ## Usage
 
 ```
 $ lyricsx-tui [--color <color>] [--no-bold] [--fix-delay <seconds>]
 ```
 
-#### Keyboard actions
+### Keyboard actions
 
 | KEY             | ACTION               |
-|-----------------|----------------------|
+| --------------- | -------------------- |
 | `[Q]`           | *Q*uit               |
 | `[R]`           | *R*eload lyrics      |
 | `[up]`/`[down]` | previous/next lyrics |
 | `[space]`       | play/pause           |
 | `[,]`/`[.]`     | previous/next track  |
-
 
 ## Screenshots
 

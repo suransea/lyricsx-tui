@@ -1,4 +1,5 @@
 {
+  "originHash" : "330879d026df627cb7c93965e079fdb1e6a8c000b70e907947f04879ffee2be7",
   "pins" : [
     {
       "identity" : "cxextensions",
@@ -28,6 +29,15 @@
       }
     },
     {
+      "identity" : "dbus-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/suransea/dbus-swift",
+      "state" : {
+        "revision" : "9b17cce66bd67a75a88e5f609bd227dc5069cbb1",
+        "version" : "0.0.5"
+      }
+    },
+    {
       "identity" : "gzipswift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/1024jp/GzipSwift",
@@ -46,12 +56,21 @@
       }
     },
     {
+      "identity" : "mpris-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/suransea/mpris-swift",
+      "state" : {
+        "revision" : "b2600f9cd728ea575dcd3246479ab61472c41e60",
+        "version" : "0.0.3"
+      }
+    },
+    {
       "identity" : "musicplayer",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ddddxxx/MusicPlayer",
+      "location" : "https://github.com/suransea/MusicPlayer.git",
       "state" : {
-        "revision" : "6eee88b4800bba1cc03b2a233fe858ccca7c9862",
-        "version" : "0.8.3"
+        "branch" : "master",
+        "revision" : "5f217424efdc599e3f5805fac56e23ff45c7cc74"
       }
     },
     {
@@ -91,5 +110,5 @@
       }
     }
   ],
-  "version" : 2
+  "version" : 3
 }

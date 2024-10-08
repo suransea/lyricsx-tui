@@ -166,11 +166,5 @@ func playLyrics(
     }
     .store(in: &cancelBag)
 
-  #if os(Linux)
-    Thread.detachNewThread {
-      Thread.current.name = "GMainLoop"
-      GRunLoop.main.run()
-    }
-  #endif
   RunLoop.main.run()
 }

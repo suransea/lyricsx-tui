@@ -3,12 +3,6 @@ import Foundation
 import MusicPlayer
 import Termbox
 
-#if os(macOS)
-  typealias CurrentPlayer = MusicPlayers.SystemMedia
-#elseif os(Linux)
-  typealias CurrentPlayer = MusicPlayers.MPRISNowPlaying
-#endif
-
 @main
 struct App: ParsableCommand {
   static var configuration = CommandConfiguration(
@@ -16,7 +10,7 @@ struct App: ParsableCommand {
     abstract: "LyricsX in terminal UI.")
 
   @Option(name: .shortAndLong, help: "The hightcolor for the current line.")
-  var color: Attributes = .cyan
+  var color: Color = .cyan
 
   @Flag(help: "Disable font bold.")
   var noBold: Bool = false
@@ -24,26 +18,38 @@ struct App: ParsableCommand {
   @Option(help: "Delay fix in seconds.")
   var fixDelay: TimeInterval = 0
 
-  func run() {
-    guard let player = CurrentPlayer() else {
-      fatalError("Unable to connect to the music player.")
-    }
-    playLyrics(for: player, highlightStyle: noBold ? color : [color, .bold], fixDelay: fixDelay)
+  func run() throws {
+    let player = try activePlayer()
+    let color = Attributes(color)
+    let style: Attributes = noBold ? color : [.bold, color]
+    playLyrics(for: player, highlightStyle: style, fixDelay: fixDelay)
   }
 }
 
-extension Attributes: ExpressibleByArgument {
-  private static let attrs: [String: Attributes] = [
-    "black": .black, "white": .white, "red": .red, "green": .green, "yellow": .yellow,
-    "blue": .blue, "magenta": .magenta, "cyan": .cyan,
-  ]
+func activePlayer() throws -> some MusicPlayerProtocol {
+  #if os(macOS)
+    MusicPlayers.SystemMedia()!
+  #elseif os(Linux)
+    try MusicPlayers.MPRISNowPlaying()
+  #endif
+}
 
-  public init?(argument: String) {
-    guard let attr = Self.attrs[argument] else { return nil }
-    self = attr
+enum Color: String, ExpressibleByArgument {
+  case black, white, red, green, yellow, blue, magenta, cyan
+}
+
+extension Attributes {
+  init(_ color: Color) {
+    self =
+      switch color {
+      case .black: .black
+      case .white: .white
+      case .red: .red
+      case .green: .green
+      case .yellow: .yellow
+      case .blue: .blue
+      case .magenta: .magenta
+      case .cyan: .cyan
+      }
   }
-
-  public var defaultValueDescription: String { "cyan" }
-
-  public static var allValueStrings: [String] { Array(attrs.keys) }
 }
