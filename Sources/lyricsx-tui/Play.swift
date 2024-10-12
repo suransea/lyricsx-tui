@@ -1,4 +1,4 @@
-import Combine
+import CXShim
 import Dispatch
 import Foundation
 import LyricsService
@@ -7,7 +7,7 @@ import Termbox
 
 private func terminalEvents(
   on queue: DispatchQueue = DispatchQueue(label: "TerminalEvents")
-) -> some Publisher<Event, Never> {
+) -> AnyPublisher<Event, Never> {
   let publisher = PassthroughSubject<Event, Never>()
   var active = true
   func publish() {
@@ -18,10 +18,11 @@ private func terminalEvents(
   }
   return publisher.handleEvents(
     receiveSubscription: { _ in queue.async { publish() } },
-    receiveCancel: { active = false })
+    receiveCancel: { active = false }
+  ).eraseToAnyPublisher()
 }
 
-private func lyrics(of track: MusicTrack) -> some Publisher<[Lyrics], Never> {
+private func lyrics(of track: MusicTrack) -> AnyPublisher<[Lyrics], Never> {
   LyricsProviders.Group()
     .lyricsPublisher(
       request: LyricsSearchRequest(
@@ -31,6 +32,7 @@ private func lyrics(of track: MusicTrack) -> some Publisher<[Lyrics], Never> {
     .collect()
     .map { $0.sorted { $0.quality > $1.quality } }
     .ignoreError()
+    .eraseToAnyPublisher()
 }
 
 private func index(of offset: TimeInterval, of lines: [LyricsLine]) -> Int {
@@ -41,7 +43,7 @@ private func timedIndices(
   of lines: [LyricsLine], on queue: DispatchQueue,
   for player: MusicPlayerProtocol,
   fixDelay: TimeInterval = 0
-) -> some Publisher<Array<LyricsLine>.Index, Never> {
+) -> AnyPublisher<Array<LyricsLine>.Index, Never> {
   let publisher = PassthroughSubject<Int, Never>()
   var canceled = false
   func publish(next index: Int) {
@@ -65,7 +67,9 @@ private func timedIndices(
         publisher.send(nextIndex - 1)
         publish(next: nextIndex)
       }
-    }, receiveCancel: { canceled = true })
+    },
+    receiveCancel: { canceled = true }
+  ).eraseToAnyPublisher()
 }
 
 func playLyrics(

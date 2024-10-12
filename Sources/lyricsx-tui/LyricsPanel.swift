@@ -1,6 +1,7 @@
 import Foundation
 import LyricsCore
 import MusicPlayer
+import Observation
 import Termbox
 
 @Observable
