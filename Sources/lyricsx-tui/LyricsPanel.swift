@@ -5,15 +5,15 @@ import Observation
 import Termbox
 
 @Observable
-class LyricsPanelState {
+final class LyricsPanelState {
   var padding: Int32 = 2
   var width: Int32 = Termbox.width
   var height: Int32 = Termbox.height
   var playbackState: PlaybackState = .stopped
   var track: MusicTrack?
   var avaliableLyrics: [Lyrics] = []
-  var lyricsIndex: Int = 0
-  var highlightIndex: Int = 0
+  var lyricsIndex: [Lyrics].Index = 0
+  var highlightIndex: [LyricsLine].Index = 0
   var highlightStyle: Attributes = [.cyan, .bold]
 
   var title: String {
@@ -63,48 +63,38 @@ class LyricsPanelState {
 }
 
 @MainActor
-func renderLyricsPanel(for state: LyricsPanelState) {
+func renderingLyricsPanel(for state: LyricsPanelState) {
   observing {
+    _ = state.topBarContent
+    _ = state.padding
+    _ = state.width
+  } didChange: {
     clearTopBar()
     renderAt(
       x: state.padding, y: 0, text: state.topBarContent, foreground: .black, background: .white)
     Termbox.present()
-  } tracking: {
-    _ = state.topBarContent
-    _ = state.padding
-    _ = state.width
   }
   observing {
+    _ = state.bottomBarContent
+    _ = state.padding
+    _ = (state.height, state.width)
+  } didChange: {
     clearBottomBar()
     renderAt(
       x: state.padding, y: Termbox.height - 1, text: state.bottomBarContent,
       foreground: .black, background: .white)
     Termbox.present()
-  } tracking: {
-    _ = state.bottomBarContent
-    _ = state.padding
-    _ = (state.height, state.width)
   }
   observing {
-    clearLyricsArea()
-    renderLyricsArea(for: state)
-    Termbox.present()
-  } tracking: {
     _ = state.lyricsLines
     _ = state.highlightIndex
     _ = state.highlightStyle
     _ = state.padding
     _ = (state.height, state.width)
-  }
-}
-
-@MainActor
-private func observing(_ block: @escaping () -> Void, tracking: @escaping () -> Void) {
-  block()
-  withObservationTracking {
-    tracking()
-  } onChange: {
-    Task { await observing(block, tracking: tracking) }
+  } didChange: {
+    clearLyricsArea()
+    renderLyricsArea(for: state)
+    Termbox.present()
   }
 }
 

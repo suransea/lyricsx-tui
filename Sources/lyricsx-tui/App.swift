@@ -4,8 +4,8 @@ import MusicPlayer
 import Termbox
 
 @main
-struct App: ParsableCommand {
-  static var configuration = CommandConfiguration(
+struct App: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(
     commandName: "lyricsx-tui",
     abstract: "LyricsX in terminal UI.")
 
@@ -18,11 +18,11 @@ struct App: ParsableCommand {
   @Option(help: "Delay fix in seconds.")
   var fixDelay: TimeInterval = 0
 
-  func run() throws {
+  func run() async throws {
     let player = try activePlayer()
     let color = Attributes(color)
     let style: Attributes = noBold ? color : [.bold, color]
-    playLyrics(for: player, highlightStyle: style, fixDelay: fixDelay)
+    try await playLyrics(for: player, highlightStyle: style, fixDelay: fixDelay)
   }
 }
 
